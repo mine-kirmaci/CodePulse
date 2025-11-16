@@ -7,6 +7,13 @@ type Commit = {
   date: string;
 };
 
+type AnalysisResult = {
+  score: number;
+  riskLevel: "low" | "medium" | "high";
+  reasons: string[];
+  tips: string[];
+};
+
 const dummyCommits: Commit[] = [
   {
     id: "7e589bc",
@@ -32,11 +39,34 @@ const App: React.FC = () => {
   const [selectedCommit, setSelectedCommit] = useState<Commit | null>(null);
   const [score, setScore] = useState<number | null>(null);
   const [selectedBranch, setSelectedBranch] = useState<string>("main");
+  const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
 
   const handleAnalyze = () => {
     if (!selectedCommit) return;
+
     const fakeScore = Math.floor(60 + Math.random() * 40);
+
+    let riskLevel: AnalysisResult["riskLevel"];
+    if (fakeScore >= 80) riskLevel = "low";
+    else if (fakeScore >= 60) riskLevel = "medium";
+    else riskLevel = "high";
+
+    const fakeAnalysis: AnalysisResult = {
+      score: fakeScore,
+      riskLevel,
+      reasons: [
+        "Commit mesajı kısa ama yeterince açıklayıcı.",
+        "Değişen dosya sayısı makul seviyede.",
+        "Debug / TODO benzeri riskli ifadeler tespit edilmedi.",
+      ],
+      tips: [
+        "Commit mesajına ilgili ticket ID’sini eklemeyi düşünebilirsin.",
+        "Büyük değişiklikleri daha küçük commit’lere bölmek review’u kolaylaştırır.",
+      ],
+    };
+
     setScore(fakeScore);
+    setAnalysis(fakeAnalysis);
   };
 
   const getScoreColor = () => {
@@ -54,18 +84,18 @@ const App: React.FC = () => {
   };
 
   return (
-  <div
-    style={{
-      fontFamily: "Segoe UI, system-ui, sans-serif",
-      minHeight: "100vh",
-      margin: 0,
-      background:
-        "linear-gradient(135deg, #f3f2f1 0%, #e5e7fb 30%, #f3f2f1 100%)",
-      display: "flex",
-      justifyContent: "center",   // yatay ortalama
-      alignItems: "center",       // dikey ortalama
-    }}
-  >
+    <div
+      style={{
+        fontFamily: "Segoe UI, system-ui, sans-serif",
+        minHeight: "100vh",
+        margin: 0,
+        background:
+          "linear-gradient(135deg, #f3f2f1 0%, #e5e7fb 30%, #f3f2f1 100%)",
+        display: "flex",
+        justifyContent: "center", // yatay ortalama
+        alignItems: "center", // dikey ortalama
+      }}
+    >
       {/* Ortalanmış shell */}
       <div
         style={{
@@ -85,7 +115,13 @@ const App: React.FC = () => {
         >
           <div>
             <h1 style={{ margin: "4px 0 0 0", fontSize: 26 }}>CodePulse</h1>
-            <p style={{ margin: "2px 0 0 0", color: "#605e5c", fontSize: 13 }}>
+            <p
+              style={{
+                margin: "2px 0 0 0",
+                color: "#605e5c",
+                fontSize: 13,
+              }}
+            >
               Azure DevOps commit analiz eklentisi · React + TypeScript (demo)
             </p>
           </div>
@@ -245,6 +281,7 @@ const App: React.FC = () => {
                     onClick={() => {
                       setSelectedCommit(commit);
                       setScore(null);
+                      setAnalysis(null);
                     }}
                     style={{
                       width: "100%",
@@ -365,6 +402,101 @@ const App: React.FC = () => {
                     >
                       {getScoreLabel()}
                     </div>
+
+                    {/* Detaylı analiz paneli */}
+                    {analysis && (
+                      <div
+                        style={{
+                          marginTop: 16,
+                          padding: 12,
+                          borderRadius: 8,
+                          backgroundColor: "#ffffff",
+                          border: "1px solid #e1dfdd",
+                          fontSize: 12,
+                        }}
+                      >
+                        {/* Risk seviyesi badge */}
+                        <div
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 6,
+                            marginBottom: 8,
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontWeight: 600,
+                            }}
+                          >
+                            Risk seviyesi:
+                          </span>
+                          <span
+                            style={{
+                              padding: "4px 10px",
+                              borderRadius: 999,
+                              backgroundColor:
+                                analysis.riskLevel === "low"
+                                  ? "#dff6dd"
+                                  : analysis.riskLevel === "medium"
+                                  ? "#fff4ce"
+                                  : "#fde7e9",
+                              color:
+                                analysis.riskLevel === "low"
+                                  ? "#107c10"
+                                  : analysis.riskLevel === "medium"
+                                  ? "#986f0b"
+                                  : "#a4262c",
+                              fontWeight: 600,
+                            }}
+                          >
+                            {analysis.riskLevel === "low"
+                              ? "Düşük"
+                              : analysis.riskLevel === "medium"
+                              ? "Orta"
+                              : "Yüksek"}
+                          </span>
+                        </div>
+
+                        {/* Nedenler */}
+                        <div style={{ marginBottom: 8 }}>
+                          <div
+                            style={{
+                              fontWeight: 600,
+                              marginBottom: 4,
+                            }}
+                          >
+                            Nedenler
+                          </div>
+                          <ul style={{ margin: 0, paddingLeft: 18 }}>
+                            {analysis.reasons.map((reason, idx) => (
+                              <li key={idx} style={{ marginBottom: 2 }}>
+                                {reason}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+
+                        {/* Öneriler */}
+                        <div>
+                          <div
+                            style={{
+                              fontWeight: 600,
+                              marginBottom: 4,
+                            }}
+                          >
+                            Öneriler
+                          </div>
+                          <ul style={{ margin: 0, paddingLeft: 18 }}>
+                            {analysis.tips.map((tip, idx) => (
+                              <li key={idx} style={{ marginBottom: 2 }}>
+                                {tip}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 

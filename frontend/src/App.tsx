@@ -40,48 +40,56 @@ const App: React.FC = () => {
   const [score, setScore] = useState<number | null>(null);
   const [selectedBranch, setSelectedBranch] = useState<string>("main");
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const handleAnalyze = () => {
     if (!selectedCommit) return;
 
-    const fakeScore = Math.floor(60 + Math.random() * 40);
+    setIsAnalyzing(true);     // analiz başladı
+    setAnalysis(null);        // eski sonucu temizle
 
-    let riskLevel: AnalysisResult["riskLevel"];
-    if (fakeScore >= 80) riskLevel = "low";
-    else if (fakeScore >= 60) riskLevel = "medium";
-    else riskLevel = "high";
+    // Sanki backend'e istek atıyormuşuz gibi 1 saniye bekleyelim
+    setTimeout(() => {
+      const fakeScore = Math.floor(60 + Math.random() * 40);
 
-    const fakeAnalysis: AnalysisResult = {
-      score: fakeScore,
-      riskLevel,
-      reasons: [
-        "Commit mesajı kısa ama yeterince açıklayıcı.",
-        "Değişen dosya sayısı makul seviyede.",
-        "Debug / TODO benzeri riskli ifadeler tespit edilmedi.",
-      ],
-      tips: [
-        "Commit mesajına ilgili ticket ID’sini eklemeyi düşünebilirsin.",
-        "Büyük değişiklikleri daha küçük commit’lere bölmek review’u kolaylaştırır.",
-      ],
+      let riskLevel: AnalysisResult["riskLevel"];
+      if (fakeScore >= 80) riskLevel = "low";
+      else if (fakeScore >= 60) riskLevel = "medium";
+      else riskLevel = "high";
+
+      const fakeAnalysis: AnalysisResult = {
+        score: fakeScore,
+        riskLevel,
+        reasons: [
+          "Commit mesajı kısa ama yeterince açıklayıcı.",
+          "Değişen dosya sayısı makul seviyede.",
+          "Debug / TODO benzeri riskli ifadeler tespit edilmedi.",
+        ],
+        tips: [
+          "Commit mesajına ilgili ticket ID’sini eklemeyi düşünebilirsin.",
+          "Büyük değişiklikleri daha küçük commit’lere bölmek review’u kolaylaştırır.",
+        ],
+      };
+
+      setScore(fakeScore);
+      setAnalysis(fakeAnalysis);
+      setIsAnalyzing(false);  // analiz bitti
+    }, 1000);
+  };
+
+    const getScoreColor = () => {
+      if (score === null) return "#605e5c";
+      if (score >= 80) return "#1a8f3b";
+      if (score >= 60) return "#e0a800";
+      return "#c53030";
     };
 
-    setScore(fakeScore);
-    setAnalysis(fakeAnalysis);
-  };
-
-  const getScoreColor = () => {
-    if (score === null) return "#605e5c";
-    if (score >= 80) return "#1a8f3b";
-    if (score >= 60) return "#e0a800";
-    return "#c53030";
-  };
-
-  const getScoreLabel = () => {
-    if (score === null) return "Henüz analiz yok";
-    if (score >= 80) return "Güvenli / yüksek kalite commit";
-    if (score >= 60) return "Orta seviye, iyileştirilebilir";
-    return "Riskli commit";
-  };
+    const getScoreLabel = () => {
+      if (score === null) return "Henüz analiz yok";
+      if (score >= 80) return "Güvenli / yüksek kalite commit";
+      if (score >= 60) return "Orta seviye, iyileştirilebilir";
+      return "Riskli commit";
+    };
 
   return (
     <div
@@ -367,19 +375,21 @@ const App: React.FC = () => {
 
                   <button
                     onClick={handleAnalyze}
-                    disabled={!selectedCommit}
+                    disabled={!selectedCommit || isAnalyzing}
                     style={{
                       padding: "8px 16px",
                       borderRadius: 6,
                       border: "none",
-                      backgroundColor: selectedCommit ? "#0078d4" : "#c8c6c4",
+                      backgroundColor:
+                        !selectedCommit || isAnalyzing ? "#c8c6c4" : "#0078d4",
                       color: "white",
-                      cursor: selectedCommit ? "pointer" : "default",
+                      cursor:
+                        !selectedCommit || isAnalyzing ? "default" : "pointer",
                       marginBottom: 16,
                       fontSize: 13,
                     }}
                   >
-                    Analizi Başlat
+                    {isAnalyzing ? "Analiz yapılıyor..." : "Analizi Başlat"}
                   </button>
 
                   <div>

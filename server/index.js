@@ -1,13 +1,11 @@
 const express = require("express");
 const cors = require("cors");
 
-//app artık bizim server’ımızdır.
-//Bütün endpoint’ler (app.get, app.post…) bunun üzerinde çalışacak.
 const app = express();
 
 // Middlewares
-app.use(cors()); // Frontend'in backend'e erişmesine izin verir
-app.use(express.json()); // Gönderilen JSON verilerini otomatik çözer
+app.use(cors());
+app.use(express.json());
 
 // Basit test endpoint'i
 app.get("/", (req, res) => {
@@ -38,27 +36,71 @@ app.post("/analyze", (req, res) => {
     findings.push("Commit mesajı conventional commit formatında değil.");
   }
 
-  // 3) Dosyalarda gizli veri arama (örnek regex)
+  // 3) Dosya içeriklerinden analiz
   const secretRegex = /(api[_-]?key|token|secret|password)\s*[:=]/i;
+  const debugRegex = /(console\.log|debugger)/i;
+  const todoRegex = /(TODO|FIXME)/i;
+
   let foundSecret = false;
+  let foundDebug = false;
+  let foundTodo = false;
+  let totalLines = 0;
 
   files.forEach((f) => {
-    if (f.content && secretRegex.test(f.content)) {
+    const content = f.content || "";
+    const lines = content.split("\n").length;
+    totalLines += lines;
+
+    if (secretRegex.test(content)) {
       foundSecret = true;
+      findings.push(
+        `Dosya '${f.filename}' içinde gizli bilgiye benzeyen bir ifade bulundu.`
+      );
+    }
+
+    if (debugRegex.test(content)) {
+      foundDebug = true;
+      findings.push(
+        `Dosya '${f.filename}' içinde debug ifadesi (console.log / debugger) kullanılmış.`
+      );
+    }
+
+    if (todoRegex.test(content)) {
+      foundTodo = true;
+      findings.push(
+        `Dosya '${f.filename}' içinde TODO / FIXME notları bırakılmış.`
+      );
     }
   });
 
+  // Secret bulunduysa ciddi puan kır
   if (foundSecret) {
     score -= 50;
-    findings.push("Commit içinde gizli bilgiye benzeyen içerik bulundu.");
+  }
+
+  // Debug kullanımı için puan kır
+  if (foundDebug) {
+    score -= 10;
+  }
+
+  // TODO / FIXME için puan kır
+  if (foundTodo) {
+    score -= 5;
+  }
+
+  // Çok büyük commit ise uyar
+  if (totalLines > 200) {
+    score -= 10;
+    findings.push(
+      `Commit çok büyük görünüyor (toplam ~${totalLines} satır değişiklik). Daha küçük commit'lere bölmeyi düşünebilirsin.`
+    );
   }
 
   // Skor sınırlandırma
   if (score < 0) score = 0;
   if (score > 100) score = 100;
 
-  const risk =
-    score >= 80 ? "LOW" : score >= 60 ? "MEDIUM" : "HIGH";
+  const risk = score >= 80 ? "LOW" : score >= 60 ? "MEDIUM" : "HIGH";
 
   res.json({
     score,

@@ -14,6 +14,11 @@ type AnalysisResult = {
   foundSecret: boolean;
 };
 
+type AnalyzedFile = {
+  filename: string;
+  content: string;
+};
+
 const dummyCommits: Commit[] = [
   {
     id: "7e589bc",
@@ -56,7 +61,7 @@ const App: React.FC = () => {
         },
         body: JSON.stringify({
           commitMessage: selectedCommit.message,
-          files: [], // şimdilik boş, demo
+          files: getDemoFilesForCommit(selectedCommit),
         }),
       });
 
@@ -114,6 +119,53 @@ const App: React.FC = () => {
     if (score >= 80) return "Güvenli / yüksek kalite commit";
     if (score >= 60) return "Orta seviye, iyileştirilebilir";
     return "Riskli commit";
+  };
+
+  const getDemoFilesForCommit = (commit: Commit): AnalyzedFile[] => {
+    // Commit mesajına göre farklı senaryolar simüle edelim
+    if (commit.message.toLowerCase().includes("auth")) {
+      return [
+        {
+          filename: "auth.service.ts",
+          content: `
+            // FIXME: geçici çözüm
+            const password = "1234";
+            console.log("Auth debug log");
+          `,
+        },
+      ];
+    }
+
+    if (commit.message.toLowerCase().includes("readme")) {
+      return [
+        {
+          filename: "README.md",
+          content: `
+            # Proje Dokümantasyonu
+            Bu commit sadece dokümantasyon güncellemesi içerir.
+          `,
+        },
+      ];
+    }
+
+    // Default senaryo
+    return [
+      {
+        filename: "index.ts",
+        content: `
+          // TODO: error handling eklenecek
+          function main() {
+            console.log("Debug için log");
+          }
+        `,
+      },
+      {
+        filename: "config.ts",
+        content: `
+          const apiKey = "SECRET_API_KEY_XXX";
+        `,
+      },
+    ];
   };
 
   return (

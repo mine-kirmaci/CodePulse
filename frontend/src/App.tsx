@@ -40,18 +40,71 @@ const dummyCommits: Commit[] = [
   },
 ];
 
+// Seçilen commit'e göre demo dosya içerikleri üret
+const getDemoFilesForCommit = (commit: Commit): AnalyzedFile[] => {
+  if (commit.message.toLowerCase().includes("auth")) {
+    return [
+      {
+        filename: "auth.service.ts",
+        content: `
+          // FIXME: geçici çözüm
+          const password = "1234";
+          console.log("Auth debug log");
+        `,
+      },
+    ];
+  }
+
+  if (commit.message.toLowerCase().includes("readme")) {
+    return [
+      {
+        filename: "README.md",
+        content: `
+          # Proje Dokümantasyonu
+          Bu commit sadece dokümantasyon güncellemesi içerir.
+        `,
+      },
+    ];
+  }
+
+  // Default senaryo
+  return [
+    {
+      filename: "index.ts",
+      content: `
+        // TODO: error handling eklenecek
+        function main() {
+          console.log("Debug için log");
+        }
+      `,
+    },
+    {
+      filename: "config.ts",
+      content: `
+        const apiKey = "SECRET_API_KEY_XXX";
+      `,
+    },
+  ];
+};
+
 const App: React.FC = () => {
   const [selectedCommit, setSelectedCommit] = useState<Commit | null>(null);
-  const [score, setScore] = useState<number | null>(null);
   const [selectedBranch, setSelectedBranch] = useState<string>("main");
+  const [score, setScore] = useState<number | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  // Seçili commit'e ait demo dosyalar (code viewer'da göstereceğiz)
+  const [demoFiles, setDemoFiles] = useState<AnalyzedFile[]>([]);
 
   const handleAnalyze = async () => {
     if (!selectedCommit) return;
 
     setIsAnalyzing(true);
     setAnalysis(null);
+
+    // Seçili commit'e göre demo dosyaları üret
+    const filesToAnalyze = getDemoFilesForCommit(selectedCommit);
 
     try {
       const response = await fetch("http://localhost:4000/analyze", {
@@ -61,7 +114,7 @@ const App: React.FC = () => {
         },
         body: JSON.stringify({
           commitMessage: selectedCommit.message,
-          files: getDemoFilesForCommit(selectedCommit),
+          files: filesToAnalyze,
         }),
       });
 
@@ -69,7 +122,6 @@ const App: React.FC = () => {
         throw new Error("API error");
       }
 
-      // Backend'ten gelen ham response
       const raw = (await response.json()) as {
         score: number;
         risk: "LOW" | "MEDIUM" | "HIGH";
@@ -121,51 +173,80 @@ const App: React.FC = () => {
     return "Riskli commit";
   };
 
-  const getDemoFilesForCommit = (commit: Commit): AnalyzedFile[] => {
-    // Commit mesajına göre farklı senaryolar simüle edelim
-    if (commit.message.toLowerCase().includes("auth")) {
-      return [
-        {
-          filename: "auth.service.ts",
-          content: `
-            // FIXME: geçici çözüm
-            const password = "1234";
-            console.log("Auth debug log");
-          `,
-        },
-      ];
+  // satır renklendirme
+  const getLineColor = (line: string) => {
+    const secretRegex = /(api[_-]?key|token|secret|password)/i;
+    const todoRegex = /(TODO|FIXME)/i;
+    const debugRegex = /(console\.log|debugger)/i;
+
+    if (secretRegex.test(line)) {
+      return "#fde7e9"; // kırmızı
     }
 
-    if (commit.message.toLowerCase().includes("readme")) {
-      return [
-        {
-          filename: "README.md",
-          content: `
-            # Proje Dokümantasyonu
-            Bu commit sadece dokümantasyon güncellemesi içerir.
-          `,
-        },
-      ];
+    if (todoRegex.test(line) || debugRegex.test(line)) {
+      return "#fff4ce"; // sarı
     }
 
-    // Default senaryo
-    return [
-      {
-        filename: "index.ts",
-        content: `
-          // TODO: error handling eklenecek
-          function main() {
-            console.log("Debug için log");
-          }
-        `,
-      },
-      {
-        filename: "config.ts",
-        content: `
-          const apiKey = "SECRET_API_KEY_XXX";
-        `,
-      },
-    ];
+    return "transparent"; // temiz
+  };
+
+  // code viewer
+  const renderFileContent = (file: AnalyzedFile) => {
+    const lines = file.content.split("\n");
+
+    return (
+      <div
+        style={{
+          marginTop: 8,
+          borderRadius: 6,
+          backgroundColor: "#f3f2f1",
+          padding: 8,
+          fontFamily: "Consolas, monospace",
+          fontSize: 11,
+          maxHeight: 180,
+          overflow: "auto",
+        }}
+      >
+        {lines.map((rawLine, index) => {
+          const line = rawLine.replace(/\t/g, "  ");
+
+          return (
+            <div
+              key={index}
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 8,
+              }}
+            >
+              <span
+                style={{
+                  width: 28,
+                  textAlign: "right",
+                  color: "#605e5c",
+                  userSelect: "none",
+                }}
+              >
+                {index + 1}
+              </span>
+              <pre
+                style={{
+                  margin: 0,
+                  padding: "0 4px",
+                  backgroundColor: getLineColor(line),
+                  borderRadius: 4,
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
+                  flex: 1,
+                }}
+              >
+                {line}
+              </pre>
+            </div>
+          );
+        })}
+      </div>
+    );
   };
 
   return (
@@ -367,6 +448,7 @@ const App: React.FC = () => {
                       setSelectedCommit(commit);
                       setScore(null);
                       setAnalysis(null);
+                      setDemoFiles(getDemoFilesForCommit(commit));
                     }}
                     style={{
                       width: "100%",
@@ -511,13 +593,7 @@ const App: React.FC = () => {
                             marginBottom: 8,
                           }}
                         >
-                          <span
-                            style={{
-                              fontWeight: 600,
-                            }}
-                          >
-                            Risk seviyesi:
-                          </span>
+                          <span style={{ fontWeight: 600 }}>Risk seviyesi:</span>
                           <span
                             style={{
                               padding: "4px 10px",
@@ -578,6 +654,50 @@ const App: React.FC = () => {
                           >
                             ⚠️ Commit içinde gizli bilgiye benzeyen içerik
                             tespit edildi!
+                          </div>
+                        )}
+
+                        {/* İncelenen dosyalar – Code Viewer */}
+                        {demoFiles.length > 0 && (
+                          <div
+                            style={{
+                              marginTop: 12,
+                            }}
+                          >
+                            <div
+                              style={{
+                                fontWeight: 600,
+                                marginBottom: 4,
+                              }}
+                            >
+                              İncelenen dosyalar
+                            </div>
+                            <p
+                              style={{
+                                marginTop: 0,
+                                marginBottom: 6,
+                                fontSize: 11,
+                                color: "#605e5c",
+                              }}
+                            >
+                              🔴 Kırmızı: gizli bilgi riski · 🟡 Sarı: TODO /
+                              debug · ⚪ Temiz satırlar
+                            </p>
+
+                            {demoFiles.map((file) => (
+                              <div key={file.filename} style={{ marginTop: 8 }}>
+                                <div
+                                  style={{
+                                    fontWeight: 600,
+                                    fontSize: 11,
+                                    marginBottom: 2,
+                                  }}
+                                >
+                                  {file.filename}
+                                </div>
+                                {renderFileContent(file)}
+                              </div>
+                            ))}
                           </div>
                         )}
                       </div>

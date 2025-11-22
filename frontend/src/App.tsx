@@ -10,8 +10,8 @@ type Commit = {
 type AnalysisResult = {
   score: number;
   riskLevel: "low" | "medium" | "high";
-  reasons: string[];
-  tips: string[];
+  findings: string[];
+  foundSecret: boolean;
 };
 
 const dummyCommits: Commit[] = [
@@ -42,54 +42,79 @@ const App: React.FC = () => {
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-  const handleAnalyze = () => {
+  const handleAnalyze = async () => {
     if (!selectedCommit) return;
 
-    setIsAnalyzing(true);     // analiz başladı
-    setAnalysis(null);        // eski sonucu temizle
+    setIsAnalyzing(true);
+    setAnalysis(null);
 
-    // Sanki backend'e istek atıyormuşuz gibi 1 saniye bekleyelim
-    setTimeout(() => {
-      const fakeScore = Math.floor(60 + Math.random() * 40);
+    try {
+      const response = await fetch("http://localhost:4000/analyze", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          commitMessage: selectedCommit.message,
+          files: [], // şimdilik boş, demo
+        }),
+      });
 
-      let riskLevel: AnalysisResult["riskLevel"];
-      if (fakeScore >= 80) riskLevel = "low";
-      else if (fakeScore >= 60) riskLevel = "medium";
-      else riskLevel = "high";
+      if (!response.ok) {
+        throw new Error("API error");
+      }
 
-      const fakeAnalysis: AnalysisResult = {
-        score: fakeScore,
-        riskLevel,
-        reasons: [
-          "Commit mesajı kısa ama yeterince açıklayıcı.",
-          "Değişen dosya sayısı makul seviyede.",
-          "Debug / TODO benzeri riskli ifadeler tespit edilmedi.",
-        ],
-        tips: [
-          "Commit mesajına ilgili ticket ID’sini eklemeyi düşünebilirsin.",
-          "Büyük değişiklikleri daha küçük commit’lere bölmek review’u kolaylaştırır.",
-        ],
+      // Backend'ten gelen ham response
+      const raw = (await response.json()) as {
+        score: number;
+        risk: "LOW" | "MEDIUM" | "HIGH";
+        findings: string[];
+        foundSecret: boolean;
       };
 
-      setScore(fakeScore);
-      setAnalysis(fakeAnalysis);
-      setIsAnalyzing(false);  // analiz bitti
-    }, 1000);
+      const riskLevel: AnalysisResult["riskLevel"] =
+        raw.risk === "LOW"
+          ? "low"
+          : raw.risk === "MEDIUM"
+          ? "medium"
+          : "high";
+
+      const analysisResult: AnalysisResult = {
+        score: raw.score,
+        riskLevel,
+        findings: raw.findings,
+        foundSecret: raw.foundSecret,
+      };
+
+      setScore(analysisResult.score);
+      setAnalysis(analysisResult);
+    } catch (err) {
+      console.error(err);
+      setScore(null);
+      setAnalysis({
+        score: 0,
+        riskLevel: "high",
+        findings: ["Analiz servisine ulaşılamadı."],
+        foundSecret: false,
+      });
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
-    const getScoreColor = () => {
-      if (score === null) return "#605e5c";
-      if (score >= 80) return "#1a8f3b";
-      if (score >= 60) return "#e0a800";
-      return "#c53030";
-    };
+  const getScoreColor = () => {
+    if (score === null) return "#605e5c";
+    if (score >= 80) return "#1a8f3b";
+    if (score >= 60) return "#e0a800";
+    return "#c53030";
+  };
 
-    const getScoreLabel = () => {
-      if (score === null) return "Henüz analiz yok";
-      if (score >= 80) return "Güvenli / yüksek kalite commit";
-      if (score >= 60) return "Orta seviye, iyileştirilebilir";
-      return "Riskli commit";
-    };
+  const getScoreLabel = () => {
+    if (score === null) return "Henüz analiz yok";
+    if (score >= 80) return "Güvenli / yüksek kalite commit";
+    if (score >= 60) return "Orta seviye, iyileştirilebilir";
+    return "Riskli commit";
+  };
 
   return (
     <div
@@ -100,8 +125,8 @@ const App: React.FC = () => {
         background:
           "linear-gradient(135deg, #f3f2f1 0%, #e5e7fb 30%, #f3f2f1 100%)",
         display: "flex",
-        justifyContent: "center", // yatay ortalama
-        alignItems: "center", // dikey ortalama
+        justifyContent: "center",
+        alignItems: "center",
       }}
     >
       {/* Ortalanmış shell */}
@@ -468,7 +493,7 @@ const App: React.FC = () => {
                           </span>
                         </div>
 
-                        {/* Nedenler */}
+                        {/* Bulgular */}
                         <div style={{ marginBottom: 8 }}>
                           <div
                             style={{
@@ -476,35 +501,33 @@ const App: React.FC = () => {
                               marginBottom: 4,
                             }}
                           >
-                            Nedenler
+                            Bulgular
                           </div>
                           <ul style={{ margin: 0, paddingLeft: 18 }}>
-                            {analysis.reasons.map((reason, idx) => (
+                            {analysis.findings.map((f, idx) => (
                               <li key={idx} style={{ marginBottom: 2 }}>
-                                {reason}
+                                {f}
                               </li>
                             ))}
                           </ul>
                         </div>
 
-                        {/* Öneriler */}
-                        <div>
+                        {/* Secret uyarısı */}
+                        {analysis.foundSecret && (
                           <div
                             style={{
+                              marginTop: 8,
+                              padding: 8,
+                              borderRadius: 6,
+                              backgroundColor: "#fde7e9",
+                              color: "#a4262c",
                               fontWeight: 600,
-                              marginBottom: 4,
                             }}
                           >
-                            Öneriler
+                            ⚠️ Commit içinde gizli bilgiye benzeyen içerik
+                            tespit edildi!
                           </div>
-                          <ul style={{ margin: 0, paddingLeft: 18 }}>
-                            {analysis.tips.map((tip, idx) => (
-                              <li key={idx} style={{ marginBottom: 2 }}>
-                                {tip}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
+                        )}
                       </div>
                     )}
                   </div>

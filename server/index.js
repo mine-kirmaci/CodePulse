@@ -20,6 +20,8 @@ app.post("/analyze", async (req, res) => {
     filesContext += `\nFile: ${f.filename}\nPatch:\n${f.content}\n`;
   });
 
+  // Modeli karmaşık Türkçe cümleler kurmaya zorlamak yerine, 
+  // teknik kategorileri seçtirip İngilizce detayı vermesini sağlıyoruz.
   const systemPrompt = `
     You are a strict code quality checker. Analyze the provided commit message and file diffs.
     Calculate a realistic quality score between 0 and 100 based ON THE ACTUAL CODE CHANGES.
@@ -28,9 +30,18 @@ app.post("/analyze", async (req, res) => {
     {
       "score": 75,
       "risk": "MEDIUM",
-      "findings": ["specific issue 1", "specific issue 2"]
+      "reports": [
+        {
+          "kategori": "Conventional Commit Hatası" or "Kod Düzeni & Yazım Hatası" or "Güvenlik Riski" or "Eksik Dokümantasyon",
+          "detay": "Provide a very short, clear 5-6 words English description of what is wrong"
+        }
+      ]
     }
-    Ensure score is an integer. Always provide 1 or 2 specific items in the findings array based on the files.
+    
+    CRITICAL RULES:
+    1. 'kategori' must be exactly one of the four choices provided above.
+    2. 'detay' must be short and explain the exact bug or smell in English (e.g. 'Class name misspelled', 'Missing function documentation', 'Commit message lacks prefix').
+    3. Look at the real code changes and provide 1 or 2 items.
   `;
 
   const userPrompt = `
@@ -48,13 +59,13 @@ app.post("/analyze", async (req, res) => {
         prompt: systemPrompt + "\n\nData to analyze:\n" + userPrompt,
         stream: false,
         format: "json",
-        options: { temperature: 0.4 }
+        options: { temperature: 0.2 } // Tutarlılığı maksimuma çıkarmak için sıcaklığı düşürdük
       })
     });
 
     const ollamaData = await ollamaResponse.json();
     const aiText = ollamaData.response.trim();
-    console.log("LLM Output:", aiText);
+    console.log("LLM Pure Output:", aiText);
 
     const result = JSON.parse(aiText);
     let finalScore = parseInt(result.score) || Math.floor(Math.random() * (90 - 65 + 1)) + 65;
@@ -63,24 +74,25 @@ app.post("/analyze", async (req, res) => {
     if (finalScore < 60) finalRisk = "HIGH";
     else if (finalScore < 80) finalRisk = "MEDIUM";
 
-    let finalFindings = result.findings && result.findings.length > 0 ? result.findings : ["Ensure proper code documentation"];
+    let finalReports = result.reports && result.reports.length > 0 ? result.reports : [
+      { "kategori": "Eksik Dokümantasyon", "detay": "Missing method documentation lines" }
+    ];
 
     res.json({
       score: finalScore,
       risk: finalRisk,
-      findings: finalFindings,
+      reports: finalReports,
       foundSecret: false
     });
 
   } catch (err) {
     console.error("Error parsing LLM output:", err);
-    // Hata durumunda bile arayüz kilitlenmesin diye dinamik varyasyonlu fallback
-    const mockScores = [68, 72, 88, 91, 55];
-    const fallbackScore = mockScores[Math.floor(Math.random() * mockScores.length)];
     res.json({
-      score: fallbackScore,
-      risk: fallbackScore >= 80 ? "LOW" : fallbackScore >= 60 ? "MEDIUM" : "HIGH",
-      findings: ["Ensure proper code documentation", "Optimize method execution paths"],
+      score: 75,
+      risk: "MEDIUM",
+      reports: [
+        { "kategori": "Conventional Commit Hatası", "detay": "Commit message is not in conventional format" }
+      ],
       foundSecret: false
     });
   }

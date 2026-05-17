@@ -124,7 +124,8 @@ const App: React.FC = () => {
         riskLevel: raw.risk.toLowerCase() as any,
         findings: raw.findings,
         foundSecret: raw.foundSecret,
-      });
+        reports: raw.reports // Backend'den gelen yeni rapora ait nesne yapısı
+      } as any);
       setScore(raw.score);
     } catch (err) {
       console.error("Analiz hatası:", err);
@@ -250,7 +251,7 @@ const App: React.FC = () => {
             </div>
           )}
 
-          {/* SEKME 2: DÜZELTİLMİŞ VE SABİTLENMİŞ MEVCUT YAN YANA YAPI */}
+          {/* SEKME 2: FOTOĞRAFA UYGUN YAN YANA YAPI */}
           {activeTab === "commit" && (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, alignItems: "start" }}>
               {/* Sol: Commit Listesi */}
@@ -272,7 +273,7 @@ const App: React.FC = () => {
                 )}
               </div>
 
-              {/* Sağ: Analiz Paneli */}
+              {/* Sağ: Tam Dönem Sonu Raporu Stili Analiz Paneli */}
               <div style={{ minWidth: 0 }}>
                 <h3 style={{ marginTop: 0, fontSize: 15, fontWeight: 600, marginBottom: 12 }}>Analiz Raporu</h3>
                 <div style={{ border: "1px solid #e1dfdd", borderRadius: 10, padding: 16, backgroundColor: "#faf9f8", boxSizing: "border-box" }}>
@@ -297,11 +298,22 @@ const App: React.FC = () => {
                         Risk seviyesi: <span style={{ fontWeight: 600, color: getScoreColor(score), backgroundColor: getScoreColor(score) + "15", padding: "2px 8px", borderRadius: 4 }}>{getRiskLabel(analysis?.riskLevel)}</span>
                       </div>
 
+                      {/* Tam Rapor Görseli Formatındaki Bulgular Alanı */}
                       <div style={{ fontSize: 13, marginBottom: 16 }}>
-                        <strong style={{ display: "block", marginBottom: 6 }}>Bulgular:</strong>
-                        <ul style={{ paddingLeft: 16, marginTop: 0, color: "#201f1e" }}>
-                          {analysis?.findings.map((f, i) => <li key={i} style={{ marginBottom: 4 }}>{f}</li>)}
-                        </ul>
+                        <strong style={{ display: "block", marginBottom: 8, color: "#111" }}>Bulgular</strong>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {(analysis as any)?.reports?.map((item: any, i: number) => (
+                            <div key={i} style={{ display: "flex", flexDirection: "column", gap: 2, padding: "2px 0" }}>
+                              <div style={{ color: "#201f1e", fontWeight: 500, display: "flex", alignItems: "start", gap: 6 }}>
+                                <span style={{ color: "#c53030", userSelect: "none" }}>•</span>
+                                <div style={{ lineHeight: "1.4" }}>
+                                  <strong>{item.kategori}:</strong>{" "}
+                                  <span style={{ color: "#605e5c", fontFamily: "monospace", fontSize: 12, backgroundColor: "#fff", padding: "1px 4px", borderRadius: 3, border: "1px solid #e1dfdd" }}>{item.detay}</span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
 
                       <div style={{ borderTop: "1px solid #e1dfdd", paddingTop: 12 }}>

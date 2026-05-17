@@ -110,6 +110,79 @@ app.post("/analyze", (req, res) => {
   });
 });
 
+// TOPLU COMMIT ANALİZİ ENDPOINT'İ (Grafikler İçin)
+app.post("/analyze-bulk", (req, res) => {
+  const { commits = [] } = req.body;
+
+  let totalScore = 0;
+  let issueCounts = {
+    shortMessage: 0,
+    conventionalMissing: 0,
+    secrets: 0,
+    debugs: 0,
+    todos: 0,
+    bigCommits: 0
+  };
+
+  // Her bir commit'i tek tek simüle veya analiz ediyoruz
+  const timelineData = commits.map((c, index) => {
+    let score = 100;
+    const message = c.message || "";
+
+    if (message.trim().length < 5) {
+      score -= 40;
+      issueCounts.shortMessage++;
+    }
+
+    const hasPrefix = message.startsWith("feat") || message.startsWith("fix") || message.startsWith("refactor");
+    if (!hasPrefix) {
+      score -= 25;
+      issueCounts.conventionalMissing++;
+    }
+
+    // Gerçek projede burası dinamik dosya analiziyle birleşebilir, 
+    // şimdilik grafik akışı için commit mesajı bazlı örnek eşleşmeler de ekleyelim
+    if (/(api[_-]?key|token|secret|password)/i.test(message)) {
+      score -= 50;
+      issueCounts.secrets++;
+    }
+    if (/(console\.log|debugger)/i.test(message)) {
+      score -= 10;
+      issueCounts.debugs++;
+    }
+    if (/(TODO|FIXME)/i.test(message)) {
+      score -= 5;
+      issueCounts.todos++;
+    }
+
+    if (score < 0) score = 0;
+    totalScore += score;
+
+    return {
+      name: c.id,          // Grafik x-ekseninde görünecek kısa SHA (örn: 5ee3bc5)
+      "Kalite Skoru": score,
+      date: c.date
+    };
+  });
+
+  const averageScore = commits.length > 0 ? Math.round(totalScore / commits.length) : 100;
+
+  // Grafiklerin anlayacağı formatta hata dağılımı dizisi oluşturuyoruz
+  const errorDistribution = [
+    { name: "Kısa Mesaj", Sayı: issueCounts.shortMessage },
+    { name: "Format Eksik", Sayı: issueCounts.conventionalMissing },
+    { name: "Sızan Veri (Secret)", Sayı: issueCounts.secrets },
+    { name: "Debug (Log)", Sayı: issueCounts.debugs },
+    { name: "TODO / FIXME", Sayı: issueCounts.todos }
+  ];
+
+  res.json({
+    averageScore,
+    timelineData: timelineData.reverse(), // Zaman akışını kronolojik yapmak için ters çeviriyoruz
+    errorDistribution
+  });
+});
+
 // Sunucuyu başlat
 const PORT = 4000;
 app.listen(PORT, () => {

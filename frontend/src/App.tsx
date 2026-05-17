@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from "react";
 import axios from 'axios';
+import {
+  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip
+} from 'recharts';
 
 const GITHUB_API = "https://api.github.com";
 
-// TİP TANIMLAMALARI
 type Commit = {
   id: string;
   fullSha: string;
@@ -25,7 +27,6 @@ type AnalyzedFile = {
 };
 
 const App: React.FC = () => {
-  // --- 1. STATE TANIMLAMALARI (Bileşen İçinde Olmalı) ---
   const [repo, setRepo] = useState("Netflix/Hystrix");
   const [branch, setBranch] = useState("main");
   const [commits, setCommits] = useState<Commit[]>([]);
@@ -33,10 +34,15 @@ const App: React.FC = () => {
   const [score, setScore] = useState<number | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [isLoadingCommits, setIsLoadingCommits] = useState(false); // Eksik olan state
+  const [isLoadingCommits, setIsLoadingCommits] = useState(false);
   const [demoFiles, setDemoFiles] = useState<AnalyzedFile[]>([]);
 
-  // --- 2. API FONKSİYONLARI ---
+  // Grafik State'leri
+  const [activeTab, setActiveTab] = useState<"dashboard" | "commit">("dashboard");
+  const [timelineData, setTimelineData] = useState<any[]>([]);
+  const [errorData, setErrorData] = useState<any[]>([]);
+  const [avgRepoScore, setAvgRepoScore] = useState<number>(100);
+
   const fetchNetflixCommits = async (targetRepo: string) => {
     const response = await axios.get(`${GITHUB_API}/repos/${targetRepo}/commits`, {
       params: { per_page: 10 }
@@ -52,7 +58,7 @@ const App: React.FC = () => {
     }));
   };
 
-  // --- 3. VERİ ÇEKME TETİKLEYİCİSİ (REPO DEĞİŞİNCE ÇALIŞIR) ---
+  // Repo Değişince Verileri Yükle
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -66,11 +72,23 @@ const App: React.FC = () => {
           date: new Date(item.commit.author.date).toLocaleDateString('tr-TR'),
         }));
         setCommits(formatted);
-        // Repo değişince seçili commit'i temizleyelim ki karışıklık olmasın
+        
         setSelectedCommit(null);
         setScore(null);
         setAnalysis(null);
         setDemoFiles([]);
+
+        // Toplu Analiz İsteği (Grafikleri Doldurmak İçin)
+        const bulkResponse = await fetch("http://localhost:4000/analyze-bulk", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ commits: formatted }),
+        });
+        const bulkData = await bulkResponse.json();
+        setTimelineData(bulkData.timelineData);
+        setErrorData(bulkData.errorDistribution);
+        setAvgRepoScore(bulkData.averageScore);
+
       } catch (err) {
         console.error("Veri yükleme hatası:", err);
       } finally {
@@ -78,16 +96,15 @@ const App: React.FC = () => {
       }
     };
     loadData();
-  }, [repo]); // Sadece repo değiştiğinde tetiklenir
+  }, [repo]);
 
-  // --- 4. ANALİZ BUTONU ---
+  // Tekil Analiz Butonu
   const handleAnalyze = async () => {
     if (!selectedCommit) return;
     setIsAnalyzing(true);
     setAnalysis(null);
 
     try {
-      // Dinamik repo adını da gönderiyoruz
       const realFiles = await fetchCommitFiles(repo, selectedCommit.fullSha);
       setDemoFiles(realFiles); 
 
@@ -116,70 +133,37 @@ const App: React.FC = () => {
     }
   };
 
-  // --- YARDIMCI GÖRSEL FONKSİYONLAR ---
-  const getScoreColor = () => {
-    if (score === null) return "#605e5c";
-    if (score >= 80) return "#1a8f3b";
-    if (score >= 60) return "#e0a800";
+  const getScoreColor = (s: number | null) => {
+    if (s === null) return "#605e5c";
+    if (s >= 80) return "#1a8f3b";
+    if (s >= 60) return "#e0a800";
     return "#c53030";
-  };
-
-  const getScoreLabel = () => {
-    if (score === null) return "Henüz analiz yok";
-    if (score >= 80) return "Güvenli / yüksek kalite commit";
-    if (score >= 60) return "Orta seviye, iyileştirilebilir";
-    return "Riskli commit";
-  };
-
-  const getLineColor = (line: string) => {
-    const secretRegex = /(api[_-]?key|token|secret|password)/i;
-    const todoRegex = /(TODO|FIXME)/i;
-    const debugRegex = /(console\.log|debugger)/i;
-    if (secretRegex.test(line)) return "#fde7e9";
-    if (todoRegex.test(line) || debugRegex.test(line)) return "#fff4ce";
-    return "transparent";
-  };
-
-  const renderFileContent = (file: AnalyzedFile) => {
-    const lines = file.content.split("\n");
-    return (
-      <div style={{ marginTop: 8, borderRadius: 6, backgroundColor: "#f3f2f1", padding: 8, fontFamily: "Consolas, monospace", fontSize: 11, maxHeight: 180, overflow: "auto" }}>
-        {lines.map((rawLine, index) => {
-          const line = rawLine.replace(/\t/g, "  ");
-          return (
-            <div key={index} style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-              <span style={{ width: 28, textAlign: "right", color: "#605e5c", userSelect: "none" }}>{index + 1}</span>
-              <pre style={{ margin: 0, padding: "0 4px", backgroundColor: getLineColor(line), borderRadius: 4, whiteSpace: "pre-wrap", wordBreak: "break-word", flex: 1 }}>{line}</pre>
-            </div>
-          );
-        })}
-      </div>
-    );
   };
 
   return (
     <div style={{ fontFamily: "Segoe UI, sans-serif", minHeight: "100vh", background: "linear-gradient(135deg, #f3f2f1 0%, #e5e7fb 30%, #f3f2f1 100%)", display: "flex", justifyContent: "center", alignItems: "center", padding: "20px" }}>
-      <div style={{ width: "100%", maxWidth: 960 }}>
+      <div style={{ width: "100%", maxWidth: 1000 }}>
+        
         {/* Üst Bar */}
         <div style={{ marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <h1 style={{ margin: 0, fontSize: 26 }}>CodePulse</h1>
+            <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700, color: "#111" }}>CodePulse</h1>
             <p style={{ margin: 0, color: "#605e5c", fontSize: 13 }}>Netflix Code Quality Analyzer</p>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             <label style={{ fontSize: 11, color: "#605e5c" }}>Branch</label>
             <select value={branch} onChange={(e) => setBranch(e.target.value)} style={{ padding: "6px 12px", borderRadius: 999, border: "1px solid #c8c6c4", fontSize: 12 }}>
-              <option value="master">master</option>
               <option value="main">main</option>
-              <option value="candidate">candidate</option>
+              <option value="master">master</option>
             </select>
           </div>
         </div>
 
         {/* Ana Kart */}
-        <div style={{ backgroundColor: "#ffffff", borderRadius: 12, boxShadow: "0 10px 30px rgba(0,0,0,0.08)", padding: 24 }}>
-          {/* Repo Seçimi ve Özet Bilgiler */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 20, borderBottom: "1px solid #e1dfdd", paddingBottom: 12 }}>
+        <div style={{ backgroundColor: "#ffffff", borderRadius: 12, boxShadow: "0 10px 30px rgba(0,0,0,0.06)", padding: 24 }}>
+          
+          {/* Repo Seçimi ve Genel Durum */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 20, borderBottom: "1px solid #e1dfdd", paddingBottom: 16 }}>
             <div>
               <label style={{ display: "block", marginBottom: 6, fontWeight: 600, fontSize: 13 }}>Repository</label>
               <select value={repo} onChange={(e) => setRepo(e.target.value)} style={{ padding: "8px 12px", borderRadius: 6, border: "1px solid #c8c6c4", minWidth: 260, fontSize: 13 }}>
@@ -188,62 +172,105 @@ const App: React.FC = () => {
                 <option value="Netflix/falcor">Netflix / Falcor</option>
               </select>
             </div>
-            <div style={{ display: "flex", gap: 8, fontSize: 12, color: "#605e5c" }}>
-              <div style={{ padding: "6px 10px", borderRadius: 999, backgroundColor: "#f3f2f1" }}>Branş: <strong>{branch}</strong></div>
-              <div style={{ padding: "6px 10px", borderRadius: 999, backgroundColor: "#f3f2f1" }}>Skor: <strong>{score !== null ? `%${score}` : "-"}</strong></div>
+            <div style={{ display: "flex", gap: 12, fontSize: 12 }}>
+              <div style={{ padding: "6px 14px", borderRadius: 999, backgroundColor: "#f3f2f1" }}>Branş: <strong>{branch}</strong></div>
+              <div style={{ padding: "6px 14px", borderRadius: 999, backgroundColor: getScoreColor(avgRepoScore) + "22", color: getScoreColor(avgRepoScore) }}>Repo Genel Kalite Ortalaması: <strong>%{avgRepoScore}</strong></div>
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1.1fr", gap: 24 }}>
-            {/* Sol: Commit Listesi */}
-            <section>
-              <h3 style={{ marginTop: 0 }}>Commit Geçmişi</h3>
-              {isLoadingCommits ? <p>Yükleniyor...</p> : (
-                <div style={{ border: "1px solid #e1dfdd", borderRadius: 10, overflow: "hidden" }}>
-                  {commits.map((commit) => (
-                    <button key={commit.fullSha} onClick={() => setSelectedCommit(commit)} style={{ width: "100%", textAlign: "left", padding: 12, border: "none", borderBottom: "1px solid #e1dfdd", backgroundColor: selectedCommit?.fullSha === commit.fullSha ? "#e5f1fb" : "#ffffff", cursor: "pointer" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
-                        <span style={{ fontWeight: 600, color: "#0078d4" }}>{commit.id}</span>
-                        <span>{commit.date}</span>
-                      </div>
-                      <div style={{ marginTop: 4, fontSize: 13 }}>{commit.message}</div>
-                      <div style={{ fontSize: 11, color: "#605e5c", marginTop: 4 }}>👤 {commit.author}</div>
-                    </button>
-                  ))}
+          {/* Sekme Menüsü (Tab Menu) */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+            <button onClick={() => setActiveTab("dashboard")} style={{ padding: "8px 16px", borderRadius: 6, border: "none", cursor: "pointer", fontWeight: 600, backgroundColor: activeTab === "dashboard" ? "#0078d4" : "#f3f2f1", color: activeTab === "dashboard" ? "white" : "#323130" }}>
+              📊 Genel Rapor & Grafikler
+            </button>
+            <button onClick={() => setActiveTab("commit")} style={{ padding: "8px 16px", borderRadius: 6, border: "none", cursor: "pointer", fontWeight: 600, backgroundColor: activeTab === "commit" ? "#0078d4" : "#f3f2f1", color: activeTab === "commit" ? "white" : "#323130" }}>
+              🔍 Tekil Commit Analizi
+            </button>
+          </div>
+
+          {/* SEKME 1: GRAFİKLER PANELI */}
+          {activeTab === "dashboard" && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginTop: 10 }}>
+              
+              {/* Çizgi Grafiği */}
+              <div style={{ border: "1px solid #e1dfdd", borderRadius: 10, padding: 16, backgroundColor: "#faf9f8" }}>
+                <h4 style={{ marginTop: 0, marginBottom: 16 }}>Zamana Göre Kalite Skoru Trendi</h4>
+                <div style={{ width: '100%', height: 260, display: "flex", justifyContent: "center" }}>
+                  <LineChart width={440} height={250} data={timelineData} margin={{ top: 10, right: 20, bottom: 5, left: -20 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" stroke="#605e5c" style={{ fontSize: 11 }} />
+                    <YAxis domain={[0, 100]} stroke="#605e5c" style={{ fontSize: 11 }} />
+                    <Tooltip />
+                    <Line type="monotone" dataKey="Kalite Skoru" stroke="#0078d4" strokeWidth={3} activeDot={{ r: 6 }} />
+                  </LineChart>
                 </div>
-              )}
-            </section>
+              </div>
 
-            {/* Sağ: Analiz Paneli */}
-            <section>
-              <h3 style={{ marginTop: 0 }}>Analiz Sonucu</h3>
-              <div style={{ border: "1px solid #e1dfdd", borderRadius: 10, padding: 16, backgroundColor: "#faf9f8", minHeight: 220 }}>
-                <button onClick={handleAnalyze} disabled={!selectedCommit || isAnalyzing} style={{ width: "100%", padding: 10, borderRadius: 6, border: "none", backgroundColor: !selectedCommit || isAnalyzing ? "#c8c6c4" : "#0078d4", color: "white", cursor: "pointer", marginBottom: 16 }}>
-                  {isAnalyzing ? "Analiz ediliyor..." : "Analizi Başlat"}
-                </button>
-
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 42, fontWeight: 700, color: getScoreColor() }}>{score !== null ? `%${score}` : "--"}</div>
-                  <div style={{ fontSize: 13, color: "#605e5c" }}>{getScoreLabel()}</div>
+              {/* Bar Grafiği */}
+              <div style={{ border: "1px solid #e1dfdd", borderRadius: 10, padding: 16, backgroundColor: "#faf9f8" }}>
+                <h4 style={{ marginTop: 0, marginBottom: 16 }}>Tespit Edilen Sorun Dağılımı</h4>
+                <div style={{ width: '100%', height: 260, display: "flex", justifyContent: "center" }}>
+                  <BarChart width={440} height={250} data={errorData} margin={{ top: 10, right: 10, bottom: 5, left: -25 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" stroke="#605e5c" style={{ fontSize: 10 }} />
+                    <YAxis stroke="#605e5c" style={{ fontSize: 11 }} allowDecimals={false} />
+                    <Tooltip />
+                    <Bar dataKey="Sayı" fill="#c53030" radius={[4, 4, 0, 0]} />
+                  </BarChart>
                 </div>
+              </div>
 
-                {analysis && (
-                  <div style={{ marginTop: 16, padding: 12, borderRadius: 8, backgroundColor: "#ffffff", border: "1px solid #e1dfdd", fontSize: 12 }}>
-                    <strong>Bulgular:</strong>
-                    <ul style={{ paddingLeft: 18, marginTop: 4 }}>
-                      {analysis.findings.map((f, i) => <li key={i}>{f}</li>)}
-                    </ul>
-                    {demoFiles.map(file => (
-                      <div key={file.filename} style={{ marginTop: 8 }}>
-                        <div style={{ fontWeight: 600, fontSize: 11 }}>📄 {file.filename}</div>
-                        {renderFileContent(file)}
-                      </div>
+            </div>
+          )}
+
+          {/* SEKME 2: MEVCUT TEKİL COMMIT İNCELEME */}
+          {activeTab === "commit" && (
+            <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1.2fr", gap: 24 }}>
+              {/* Sol: Commit Listesi */}
+              <section>
+                <h3 style={{ marginTop: 0, fontSize: 16 }}>İncelemek İçin Bir Commit Seçin</h3>
+                {isLoadingCommits ? <p>Yükleniyor...</p> : (
+                  <div style={{ border: "1px solid #e1dfdd", borderRadius: 10, overflow: "hidden", maxHeight: 450, overflowY: "auto" }}>
+                    {commits.map((commit) => (
+                      <button key={commit.fullSha} onClick={() => setSelectedCommit(commit)} style={{ width: "100%", textAlign: "left", padding: 12, border: "none", borderBottom: "1px solid #e1dfdd", backgroundColor: selectedCommit?.fullSha === commit.fullSha ? "#e5f1fb" : "#ffffff", cursor: "pointer" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+                          <span style={{ fontWeight: 600, color: "#0078d4" }}>{commit.id}</span>
+                          <span>{commit.date}</span>
+                        </div>
+                        <div style={{ marginTop: 4, fontSize: 13, fontWeight: 500 }}>{commit.message}</div>
+                        <div style={{ fontSize: 11, color: "#605e5c", marginTop: 4 }}>👤 {commit.author}</div>
+                      </button>
                     ))}
                   </div>
                 )}
-              </div>
-            </section>
-          </div>
+              </section>
+
+              {/* Sağ: Analiz Sonucu */}
+              <section>
+                <h3 style={{ marginTop: 0, fontSize: 16 }}>Analiz Raporu</h3>
+                <div style={{ border: "1px solid #e1dfdd", borderRadius: 10, padding: 16, backgroundColor: "#faf9f8" }}>
+                  <button onClick={handleAnalyze} disabled={!selectedCommit || isAnalyzing} style={{ width: "100%", padding: 10, borderRadius: 6, border: "none", backgroundColor: !selectedCommit || isAnalyzing ? "#c8c6c4" : "#0078d4", color: "white", cursor: "pointer", marginBottom: 16, fontWeight: 600 }}>
+                    {isAnalyzing ? "Analiz ediliyor..." : "Seçili Commit'i Analiz Et"}
+                  </button>
+
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 42, fontWeight: 700, color: getScoreColor(score) }}>{score !== null ? `%${score}` : "--"}</div>
+                    <div style={{ fontSize: 13, color: "#605e5c", marginTop: 4 }}>{score !== null ? "Tekil Commit Kalitesi" : "Henüz analiz yapılmadı"}</div>
+                  </div>
+
+                  {analysis && (
+                    <div style={{ marginTop: 16, padding: 12, borderRadius: 8, backgroundColor: "#ffffff", border: "1px solid #e1dfdd", fontSize: 12 }}>
+                      <strong>Bulgular:</strong>
+                      <ul style={{ paddingLeft: 18, marginTop: 4, color: "#a80000" }}>
+                        {analysis.findings.length === 0 ? <li>Temiz commit! Belirgin bir hata bulunamadı.</li> : analysis.findings.map((f, i) => <li key={i}>{f}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </section>
+            </div>
+          )}
+
         </div>
       </div>
     </div>
